@@ -1,0 +1,30 @@
+def dapatkan_user_dari_username(username):
+    driver.get("https://www.instagram.com/"+username+"/")
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1._7UhW9")))
+    uname = driver.find_element_by_css_selector('h1._7UhW9').text
+    
+    nama = driver.find_element_by_css_selector('h1.rhpdm').text
+    post_wer_wing = driver.find_elements_by_css_selector('span.g47SY')
+    jumlah_post = post_wer_wing[0].get_attribute('innerHTML')
+    jumlah_follower = post_wer_wing[1].get_attribute('title')
+    jumlah_following = post_wer_wing[2].get_attribute('innerHTML')
+    divdeskripsi = driver.find_element_by_css_selector('div.-vDIg')
+    isi_deskripsi = divdeskripsi.text.encode('unicode-escape').decode('utf-8')
+    foto = uname+".jpg"
+
+    try:
+        src = driver.find_element_by_css_selector('img.be6sR').get_attribute("src")
+    except:
+        src = driver.find_element_by_css_selector('img._6q-tv').get_attribute("src")
+        
+    urllib.request.urlretrieve(src, "download/"+uname+".jpg")
+
+    print("username "+uname)
+    print("nama "+nama)
+    print("jumlah post "+jumlah_post)
+    print("jumlah follower "+jumlah_follower)
+    print("jumlah following "+jumlah_following)
+    print("deskripsi "+isi_deskripsi)
+
+dapatkan_user_dari_username("vanillahijab")
