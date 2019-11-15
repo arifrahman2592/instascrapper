@@ -1,0 +1,393 @@
+import getpass
+import calendar
+import os
+import platform
+import sys
+import urllib.request
+import requests
+
+#import emoji untuk emoji
+import emoji
+#import sys emoji dan sys masih testing saja
+import sys
+
+#import library mysql untuk save ke database
+import mysql.connector
+
+import unicodedata
+
+#waktu untuk sleep
+import time
+
+#tanggalan
+from datetime import datetime
+
+#alternative ngambil data dari tag html, blm terpakai sih, saat ini masih pakai xpath aja
+from bs4 import BeautifulSoup
+
+#selenium ini yang menjalankan browser
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+
+total_scrolls = 5000
+current_scrolls = 0
+scroll_time = 15
+old_height = 0
+
+# -------------------------------------------------------------
+# -------------------------------------------------------------
+
+def check_height():
+    new_height = driver.execute_script("return document.body.scrollHeight")
+    return new_height != old_height
+
+
+# -------------------------------------------------------------
+# -------------------------------------------------------------
+
+# helper function: used to scroll the page
+def scroll():
+    global old_height
+    current_scrolls = 0
+
+    while (True):
+        try:
+            if current_scrolls == total_scrolls:
+                return
+
+            old_height = driver.execute_script("return document.body.scrollHeight")
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            WebDriverWait(driver, scroll_time).until(lambda driver: check_height())
+            current_scrolls += 1
+        except TimeoutException:
+            break
+    return
+
+
+def dapatkan_detail_post_dan_komentar(username,url_post):
+    
+    driver.get("https://www.instagram.com/p/"+url_post+"/")
+
+
+
+    #dapatkan dulu gambarnya
+    media_post = ""
+    alt_media_post = ""
+    try:
+        #gambar
+        print("gue gambar")
+        item = driver.find_element_by_xpath("//*[@class='KL4Bh']");
+        gambar = item.find_element_by_tag_name("img")
+        #nama gambar
+        media_post = url_post+".jpg"
+        #alternative gambar
+        alt_media_post = gambar.get_attribute('alt')
+        src = gambar.get_attribute("src")
+        urllib.request.urlretrieve(src, "download/"+url_post+".jpg")
+        jenis_post = "gambar"
+        
+    except:
+        #video
+        print("gue VIDEO")
+        item = driver.find_element_by_xpath("//*[@class='_5wCQW']");
+        video = item.find_element_by_tag_name("video")
+        #nama video
+        media_post = url_post+".mp4"
+        src = video.get_attribute("src")
+        urllib.request.urlretrieve(src, "download/"+url_post+".mp4")
+        jenis_post = "video"
+        
+
+    #dapatkan jumlah like
+    div_jml_like = driver.find_element_by_xpath("//*[@class='Nm9Fw']")
+    jml = div_jml_like.find_element_by_css_selector('button>span').text
+    jumlah_like = jml.replace(",", "")
+
+    #dapatkan waktu posting
+    a_waktu = driver.find_element_by_xpath("//*[@class='c-Yi7']")
+    tanggal = a_waktu.find_element_by_css_selector('time').get_attribute("datetime")
+    tanggal_post = tanggal[:10]
+    jam_post = tanggal[11:-5]
+
+    #dapatkan caption
+    div_caption = driver.find_element_by_xpath("//*[@class='C4VMK']")
+    captions = div_caption.find_elements_by_css_selector('span')
+    isi_caption = captions[0].text.encode('unicode-escape').decode('utf-8')
+    
+    
+
+    #dapatkan komen
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.dCJp8")))
+
+    ul = driver.find_element_by_xpath("//*[@class='XQXOT']")
+    for i in range(100):
+        try:
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "li>div>button.dCJp8")))
+            button = ul.find_element_by_css_selector('li>div>button')
+            button.click()
+        except:
+            print("gak ada tombol")
+            break
+
+    try:
+        semua_ul = driver.find_elements_by_xpath("//*[@class='Mr508']")
+        jumlah_komentar = len(semua_ul);
+        print(jumlah_komentar)
+
+        #simpan ke database
+        mydb = mysql.connector.connect(host="localhost",user="root",passwd="",database="lombapulang")
+        mycursor = mydb.cursor()
+        sql = "INSERT INTO ig_post (username,url_post,caption_post,media_post,alt_media_post,jenis_post,tanggal_post,jam_post,jumlah_like,jumlah_komentar) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        val = (username,url_post,isi_caption,media_post,alt_media_post,jenis_post,tanggal_post,jam_post,jumlah_like,jumlah_komentar)
+        mycursor.execute(sql, val)
+        mydb.commit()
+
+        if jumlah_komentar == 0:
+            print("tiada komentar")
+        else:
+            #scrap komentar
+            for tiap_ul in semua_ul:
+                #dapatkan komen
+                div_cmnt = tiap_ul.find_element_by_xpath(".//div[@class='C4VMK']")
+                h3 = div_cmnt.find_element_by_xpath(".//h3")
+                a = h3.find_element_by_xpath(".//a")
+                url_pengkomen = a.get_attribute("href")
+                nama_pengkomen = a.text
+                isi_komen = div_cmnt.find_element_by_css_selector('span').text.encode('unicode-escape').decode('utf-8')
+
+                #dapatkan waktu komen
+                tglan = div_cmnt.find_element_by_css_selector('time.FH9sR')
+                tglan.get_attribute("datetime")
+                tanggal_komen = tanggal[:10]
+                jam_komen = tanggal[11:-5]
+                sql = "INSERT INTO ig_komentar (url_post,nama_komentar,url_komentar,isi_komentar,tanggal_komentar,jam_komentar) VALUES (%s, %s, %s, %s, %s, %s)"
+                val = (url_post,nama_pengkomen,url_pengkomen,isi_komen,tanggal_komen,jam_komen)
+                mycursor.execute(sql, val)
+                mydb.commit()
+    except:
+        print("nokomen")
+        
+
+def dapatkan_post_dari_username(username):
+    driver.get("https://instagram.com/"+username+"/")
+    
+
+    semua_url_lengkap = []
+    semua_url_post = []
+    nomor=1
+    for i in range(50):
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        print(nomor)
+        nomor+=1
+        #mendapatkan list tiap cards update status
+        article = driver.find_element_by_tag_name("article")
+        list_cards = article.find_elements_by_tag_name("a")
+    
+        for item in list_cards:
+
+            url_lengkap=item.get_attribute("href")
+            semua_url_lengkap.append(url_lengkap)
+            
+            segmen = url_lengkap.rsplit('/', 2)
+            semua_url_post.append(segmen[1])
+
+
+    print(len(semua_url_post))
+    print(semua_url_post)
+
+    list_url_post = list(dict.fromkeys(semua_url_post))
+
+    for tiap_url_post in list_url_post:
+        dapatkan_detail_post_dan_komentar(username,tiap_url_post)
+        time.sleep(5)
+    
+    
+
+def dapatkan_user_dari_username(username):
+    driver.get("https://www.instagram.com/"+username+"/")
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1._7UhW9")))
+    uname = driver.find_element_by_css_selector('h1._7UhW9').text
+    
+    nama = driver.find_element_by_css_selector('h1.rhpdm').text
+    post_wer_wing = driver.find_elements_by_css_selector('span.g47SY')
+    jumlah_post = post_wer_wing[0].get_attribute('innerHTML')
+    jumlah_follower = post_wer_wing[1].get_attribute('innerHTML')
+    jumlah_following = post_wer_wing[2].get_attribute('innerHTML')
+    divdeskripsi = driver.find_element_by_css_selector('div.-vDIg')
+    isi_deskripsi = divdeskripsi.text.encode('unicode-escape').decode('utf-8')
+    foto = uname+".jpg"
+
+    src = driver.find_element_by_css_selector('img._6q-tv').get_attribute("src")
+    urllib.request.urlretrieve(src, "download/"+uname+".jpg")
+
+    mydb = mysql.connector.connect(host="localhost",user="root",passwd="",database="lomba")
+    mycursor = mydb.cursor(buffered=True)
+    sql = "INSERT INTO ig_user (username,nama,deskripsi,jumlah_post,jumlah_follower,jumlah_following,foto_user) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    val = (uname, nama, isi_deskripsi, jumlah_post, jumlah_follower, jumlah_following, foto)
+    mycursor.execute(sql, val)
+    mydb.commit()
+
+
+
+def dapatkan_user_dari_post(url_post):
+    driver.get("https://www.instagram.com/p/"+url_post+"/")
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h2.BrX75")))
+    a = driver.find_element_by_css_selector('div>h2>a')
+    url_lengkap=a.get_attribute("href")
+    username=a.get_attribute("title")
+    dapatkan_user_dari_username(username)
+
+
+def cari_post_dari_hashtag(tag):
+    driver.get("https://instagram.com/explore/tags/"+tag+"/")
+    scroll()
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.eLAPa")))
+    
+    #mendapatkan list tiap cards update status
+    list_cards = driver.find_elements_by_xpath("//*[@class='v1Nh3 kIKUG  _bz0w']")
+
+    for item in list_cards:
+        a = item.find_element_by_tag_name('a')
+        url_lengkap=a.get_attribute("href")
+        segmen = url_lengkap.rsplit('/', 2)
+        url_post = segmen[1]
+
+        img = item.find_element_by_tag_name('img')
+        alt = img.get_attribute('alt')
+        src = img.get_attribute('src')
+        foto_post = url_post+".jpg"
+        urllib.request.urlretrieve(src, "download/"+url_post+".jpg")
+        
+
+        hariini = datetime.today().strftime('%Y-%m-%d')
+
+        #simpan ke mysql
+        mydb = mysql.connector.connect(host="localhost",user="root",passwd="",database="lomba")
+        mycursor = mydb.cursor(buffered=True)
+
+        sqlq = "SELECT * FROM tag_explore WHERE nama_tag = '"+tag+"' AND url_post = '"+url_post+"'"
+        mycursor.execute(sqlq)
+        results = mycursor.fetchone()
+        if results =='1':
+            print('ada')
+        else:
+            sql = "INSERT INTO tag_explore (nama_tag, url_post, url_lengkap, tanggal_ambil, foto_post, alt_foto_post) VALUES (%s, %s, %s, %s, %s, %s)"
+            val = (tag, url_post, url_lengkap, hariini,foto_post,alt)
+            mycursor.execute(sql, val)
+            mydb.commit()
+            
+
+def cari_hashtag_akun(keyword):
+    
+    driver.get("https://instagram.com/")
+    driver.find_element_by_class_name('XTCLo').send_keys(keyword)
+    time.sleep(5)
+    wait = WebDriverWait(driver, 15)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.fuqBx")))
+
+    #tanggal
+    hariini = datetime.today().strftime('%Y-%m-%d')
+
+    hasil_cari = driver.find_elements_by_class_name('Ap253');
+    for hasil in hasil_cari:
+        nama = hasil.text
+
+        jenis = ""
+        if(nama.find("#")):
+            jenis="akun"
+            print("akun "+nama)
+        else:
+            jenis="hashtag"
+            print("hastag "+nama)
+
+        #simpan ke mysql
+        mydb = mysql.connector.connect(host="localhost",user="root",passwd="",database="lomba")
+        mycursor = mydb.cursor(buffered=True)
+        sql = "INSERT INTO ig_cari (keyword,jenis_hasil,hasil,tanggal_cari) VALUES (%s, %s, %s, %s)"
+        val = (keyword, jenis, nama, hariini)
+        mycursor.execute(sql, val)
+        mydb.commit()
+
+
+def login():
+    try:
+        global driver
+
+        options = Options()
+
+        #  Code to disable notifications pop up of Chrome Browser
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--mute-audio")
+
+        #argumen untuk mengabaikan SSL
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--ignore-ssl-errors')
+        # options.add_argument("headless")
+
+        try:
+            platform_ = platform.system().lower()
+            if platform_ in ['linux', 'darwin']:
+                driver = webdriver.Chrome(executable_path="./chromedriver", options=options)
+            else:
+                driver = webdriver.Chrome(executable_path="./chromedriver.exe", options=options)
+        except:
+            print("Kindly replace the Chrome Web Driver with the latest one from"
+                  "http://chromedriver.chromium.org/downloads"
+                  "\nYour OS: {}".format(platform_)
+                 )
+            exit()
+
+        driver.get("https://instagram.com/accounts/login")
+        driver.maximize_window()
+        
+        #wait = WebDriverWait(driver, 15)
+        #wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input._2hvTZ")))
+        # filling the form
+        driver.find_element_by_name('username').send_keys("arifrahman2592")
+        driver.find_element_by_name('password').send_keys("Kmzwa8awaa")
+
+        # clicking on login button
+        driver.find_element_by_css_selector('button.L3NKy').click()
+        wait = WebDriverWait(driver, 15)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.gmFkV")))
+        
+    except Exception as e:
+        print("There's some error in log in.")
+        print(sys.exc_info()[0])
+        exit()
+
+#1. login ini wajib, karena utk mendapatkan data dari instagram harus login sebagai pengguna
+login()
+
+#2. fungsi cari hashtag & akun adalah untuk mendapatkan hashtag populer dan akun instagram yang jualan sesuai keyword
+# dari fungsi ini, kita memperoleh hashtag dan akun instagram tertentu
+#cari_hashtag_akun("hijab voal murah")
+
+#3. dari action sebelumnya kan dapat hastag, nah sekarang kita cari postingan postingan sesuai hashtag
+# postingan yang diperoleh, simpan ke tabel tag_explore
+#cari_post_dari_hashtag("voalpolos")
+
+#4. dari tag explore, kan dapat post post tuh, maka cari usernya berdasarkan post post itu
+# ending dari fungsi ini adalah menyimpan data user instagram sang pemilik post tersebut
+#dapatkan_user_dari_post("B2dHhPSlqpy")
+
+#5. jika nomor 4 mendapatkan user dari suatu post, maka yang nomor 5 ini lebih mudah, yaitu mendapatkan user dari username si user itu sendiri
+# ending dari fungsi ini adalah menyimpan data user instagram berdasarkan username
+#dapatkan_user_dari_username("celmirashop")
+
+#6. setelah mendapatkan username atau akun akun pedagang di instagram. selanjutnya scrap postingan mereka
+# dapatnya data postingan instagram
+#dapatkan_post_dari_username("celmirashop")
+
+#7. sekarang tiap postingan harus di cari detailnya serta komentar komentar pada postingan tersebut
+dapatkan_detail_post_dan_komentar("lucjaofficial","B4T3TRKAmg8")
