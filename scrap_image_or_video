@@ -1,0 +1,59 @@
+import getpass
+import calendar
+import os
+import platform
+import sys
+import urllib.request
+import requests
+
+#import emoji untuk emoji
+import emoji
+#import sys emoji dan sys masih testing saja
+import sys
+
+#import library mysql untuk save ke database
+import mysql.connector
+
+import unicodedata
+
+#waktu untuk sleep
+import time
+
+#tanggalan
+from datetime import datetime
+
+#alternative ngambil data dari tag html, blm terpakai sih, saat ini masih pakai xpath aja
+from bs4 import BeautifulSoup
+
+#selenium ini yang menjalankan browser
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+
+
+    
+def cek_gambar_atau_video():
+    driver.get("https://www.instagram.com/p/B4T3TRKAmg8/")
+    #dapatkan dulu gambarnya
+    try:
+        #gambar
+        item = driver.find_element_by_xpath("//*[@class='KL4Bh']");
+        gambar = item.find_element_by_tag_name("img")
+        src = gambar.get_attribute("src")
+        urllib.request.urlretrieve(src, "gambar/B4T3TRKAmg8.jpg")
+        print("saya gambar")
+    except:
+        #video
+        print("saya video")
+        item = driver.find_element_by_xpath("//*[@class='_5wCQW']");
+        video = item.find_element_by_tag_name("video")
+        src = video.get_attribute("src")
+        print(video.get_attribute("src"))
+        #urllib.request.urlretrieve(src, "video/B4T3TRKAmg8.mp4")
+    print(item.get_attribute("innerHTML"))
+
+cek_gambar_atau_video()
